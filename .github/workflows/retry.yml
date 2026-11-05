@@ -1,0 +1,26 @@
+name: Ask Oracle for a free server
+# Every 20 minutes, tries for a few minutes to create the Always Free server. Turns itself off once the Ampere server exists.
+on:
+  schedule: [{ cron: "*/20 * * * *" }]
+  workflow_dispatch:
+permissions: { actions: write, contents: read }
+concurrency: oci-retry
+jobs:
+  try:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: retry.py }
+      - run: pip install -q oci
+      - name: Write API key
+        env: { CONF: "${{ secrets.OCI_CONFIG }}", KEY: "${{ secrets.OCI_API_KEY }}" }
+        run: |
+          mkdir -p ~/.oci && printf '%s\n' "$KEY" > ~/.oci/key.pem && chmod 600 ~/.oci/key.pem
+          printf '%s\n' "$CONF" | grep -v '^key_file' > ~/.oci/config && echo "key_file=~/.oci/key.pem" >> ~/.oci/config && chmod 600 ~/.oci/config
+      - name: Try
+        run: python retry.py | tee out.txt
+      - name: Stop when the Ampere server exists
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: if grep -q "FOUND VM.Standard.A1.Flex" out.txt; then gh workflow disable retry.yml -R "$GITHUB_REPOSITORY"; fi
