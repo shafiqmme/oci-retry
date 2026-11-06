@@ -1,14 +1,14 @@
 name: Ask Oracle for a free server
-# Every 20 minutes, tries for a few minutes to create the Always Free server. Turns itself off once the Ampere server exists.
+# One run tries about once a minute for ~5h45m, posts an hourly update on the status issue, then starts the next run itself.
+# Stops for good once the Ampere A1 server exists.
 on:
-  schedule: [{ cron: "*/20 * * * *" }]
   workflow_dispatch:
-permissions: { actions: write, contents: read }
+permissions: { actions: write, contents: read, issues: write }
 concurrency: oci-retry
 jobs:
   try:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -19,8 +19,18 @@ jobs:
         run: |
           mkdir -p ~/.oci && printf '%s\n' "$KEY" > ~/.oci/key.pem && chmod 600 ~/.oci/key.pem
           printf '%s\n' "$CONF" | grep -v '^key_file' > ~/.oci/config && echo "key_file=~/.oci/key.pem" >> ~/.oci/config && chmod 600 ~/.oci/config
-      - name: Try
-        run: python retry.py | tee out.txt
-      - name: Stop when the Ampere server exists
+      - name: Status issue
         env: { GH_TOKEN: "${{ github.token }}" }
-        run: if grep -q "FOUND VM.Standard.A1.Flex" out.txt; then gh workflow disable retry.yml -R "$GITHUB_REPOSITORY"; fi
+        run: |
+          n=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "A1 status in:title" --json number -q '.[0].number')
+          [ -z "$n" ] && n=$(gh issue create -R "$GITHUB_REPOSITORY" -t "A1 status" -b "Hourly updates from the retry job." | grep -o '[0-9]*$')
+          echo "ISSUE=$n" >> "$GITHUB_ENV"
+      - name: Try
+        env: { GH_TOKEN: "${{ github.token }}", TRY_SECONDS: "20400" }
+        run: python retry.py | tee out.txt
+      - name: Next run, or stop when found
+        if: always()
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          if grep -q "FOUND VM.Standard.A1.Flex" out.txt; then gh workflow disable retry.yml -R "$GITHUB_REPOSITORY"
+          else gh workflow run retry.yml -R "$GITHUB_REPOSITORY" --ref main; fi

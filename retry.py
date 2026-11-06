@@ -2,7 +2,13 @@
 Tries the Ampere A1 server (2 OCPU, 12 GB) first; if there is no server yet, also tries the small AMD micro.
 Reads the OCI API key from ~/.oci (written by the workflow from secrets). Prints FOUND <shape> <ip> on success."""
 import os, sys, time
+import subprocess
 import oci
+
+def note(msg):
+    """Post a comment on the status issue (GitHub emails the owner)."""
+    if os.environ.get("ISSUE"):
+        subprocess.run(["gh", "issue", "comment", os.environ["ISSUE"], "-R", os.environ["GITHUB_REPOSITORY"], "-b", "@shafiqmme " + msg])
 
 PUBKEY = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "server_key.pub")).read().strip()  # public half of the server SSH key (safe to publish)
 cfg = oci.config.from_file(os.path.expanduser("~/.oci/config"))
@@ -48,11 +54,16 @@ def launch(shape, ad, sub):
 
 have = {i.shape: i for i in live()}
 if A1 in have:
-    print("FOUND", A1, public_ip(have[A1])); sys.exit(0)
+    ip = public_ip(have[A1]); print("FOUND", A1, ip); note(f"A1 server exists. IP: {ip}"); sys.exit(0)
 ad = ident.list_availability_domains(tenancy).data[0].name
 sub = subnet_id()
 end = time.time() + int(os.environ.get("TRY_SECONDS", "240"))
+tries, last = 0, os.environ.get("LAST_ERR", "")
+nextnote = time.time() + 3600
 while time.time() < end:
+    if os.environ.get("ISSUE") and time.time() >= nextnote:
+        note(f"Hourly update: no A1 yet. {tries} tries in the last hour. Last answer: {last}")
+        tries, nextnote = 0, time.time() + 3600
     for shape in ([A1] if have else [A1, MICRO]):
         try:
             inst = launch(shape, ad, sub)
@@ -61,9 +72,11 @@ while time.time() < end:
                 time.sleep(15)
                 if compute.get_instance(inst.id).data.lifecycle_state == "RUNNING":
                     break
-            print("FOUND", shape, public_ip(compute.get_instance(inst.id).data)); sys.exit(0)
+            ip = public_ip(compute.get_instance(inst.id).data)
+            print("FOUND", shape, ip); note(f"GOT IT! {shape} created. IP: {ip}"); sys.exit(0)
         except oci.exceptions.ServiceError as e:
-            print(time.strftime("%H:%M:%S"), shape, e.status, (e.message or "")[:90], flush=True)
+            tries += 1; last = (e.message or str(e.status))[:90]
+            print(time.strftime("%H:%M:%S"), shape, e.status, last, flush=True)
             time.sleep(40 if e.status == 429 else 10)  # stay under Oracle's request limit
-    time.sleep(60)
+    time.sleep(45)
 print("NOT_YET")
