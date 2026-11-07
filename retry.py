@@ -45,7 +45,7 @@ def image_id(shape):
 def launch(shape, ad, sub):
     d = oci.core.models.LaunchInstanceDetails(
         availability_domain=ad, compartment_id=tenancy, shape=shape, display_name="website",
-        shape_config=oci.core.models.LaunchInstanceShapeConfigDetails(ocpus=2, memory_in_gbs=12) if shape == A1 else None,
+        shape_config=oci.core.models.LaunchInstanceShapeConfigDetails(ocpus=1, memory_in_gbs=6) if shape == A1 else None,
         create_vnic_details=oci.core.models.CreateVnicDetails(subnet_id=sub, assign_public_ip=True),
         metadata={"ssh_authorized_keys": PUBKEY},
         source_details=oci.core.models.InstanceSourceViaImageDetails(image_id=image_id(shape), boot_volume_size_in_gbs=50))
