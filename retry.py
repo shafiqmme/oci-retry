@@ -36,10 +36,13 @@ def subnet_id():
     return subs[0].id
 
 
+_IMG = {}
 def image_id(shape):
+    if shape in _IMG: return _IMG[shape]
     imgs = compute.list_images(tenancy, operating_system="Canonical Ubuntu", operating_system_version="24.04", shape=shape,
                                sort_by="TIMECREATED", sort_order="DESC").data
-    return [i for i in imgs if "Minimal" not in (i.display_name or "")][0].id
+    _IMG[shape] = [i for i in imgs if "Minimal" not in (i.display_name or "")][0].id
+    return _IMG[shape]
 
 
 def launch(shape, ad, sub):
@@ -77,6 +80,6 @@ while time.time() < end:
         except oci.exceptions.ServiceError as e:
             tries += 1; last = (e.message or str(e.status))[:90]
             print(time.strftime("%H:%M:%S"), shape, e.status, last, flush=True)
-            time.sleep(40 if e.status == 429 else 10)  # stay under Oracle's request limit
-    time.sleep(45)
+            time.sleep(120 if e.status == 429 else 15)  # stay under Oracle's request limit
+    time.sleep(70)
 print("NOT_YET")
