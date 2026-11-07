@@ -80,6 +80,6 @@ while time.time() < end:
         except oci.exceptions.ServiceError as e:
             tries += 1; last = (e.message or str(e.status))[:90]
             print(time.strftime("%H:%M:%S"), shape, e.status, last, flush=True)
-            time.sleep(120 if e.status == 429 else 15)  # stay under Oracle's request limit
-    time.sleep(70)
+            time.sleep(5)  # stay under Oracle's request limit
+    time.sleep(25)
 print("NOT_YET")
