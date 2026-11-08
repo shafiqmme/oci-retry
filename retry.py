@@ -62,11 +62,14 @@ ad = ident.list_availability_domains(tenancy).data[0].name
 sub = subnet_id()
 end = time.time() + int(os.environ.get("TRY_SECONDS", "240"))
 tries, last = 0, os.environ.get("LAST_ERR", "")
-nextnote = time.time() + 3600
+def next_daily():  # once a day, 13:00 UTC = 8 AM Toronto
+    t = time.time(); d = t - t % 86400 + 13 * 3600
+    return d if d > t else d + 86400
+nextnote = next_daily()
 while time.time() < end:
     if os.environ.get("ISSUE") and time.time() >= nextnote:
-        note(f"Hourly update: no A1 yet. {tries} tries in the last hour. Last answer: {last}")
-        tries, nextnote = 0, time.time() + 3600
+        note(f"Daily update: no A1 yet, still trying every ~30 seconds. {tries} tries in the last few hours. Last answer: {last}")
+        tries, nextnote = 0, next_daily()
     for shape in ([A1] if have else [A1, MICRO]):
         try:
             inst = launch(shape, ad, sub)
